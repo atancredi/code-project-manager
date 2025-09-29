@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import List
+from typing import List, Tuple, Optional
 from threading import Thread
 
 from fastapi import FastAPI, Path
@@ -47,15 +47,16 @@ ws = uvicorn.Server(
 )
 
 # ui
- 
 @app.get("/")
 def index():
     return FileResponse("webui/dist/index.html")
- 
+
+
 @app.exception_handler(404)
 async def exception_404_handler(request, exc):
     return FileResponse("webui/dist/index.html")
- 
+
+
 app.mount("/app", StaticFiles(directory="webui/dist/"), name="webui")
 
 
@@ -90,7 +91,7 @@ async def add_projects(projects: List[ProjectData]):
             failed.append((i, "missing path"))
             continue
         try:
-            res = p.add(project.name, project.path, " ".join(project.tags))
+            res = p.add(project.name, project.path, project.tags, project.notes_file)
             affected_ids.append(res["id"])
         except Exception as ex:
             failed.append((i, f"{ex.__class__.__name__}: {str(ex)}"))
@@ -100,6 +101,7 @@ async def add_projects(projects: List[ProjectData]):
         return JSONResponse({"success": affected_ids, "fail": failed})
     else:
         return Response("Error while committing changes", status_code=500)
+
 
 @app.patch("/projects")
 async def update_projects(projects: List[ProjectData]):
@@ -112,7 +114,7 @@ async def update_projects(projects: List[ProjectData]):
             failed.append((project.id, "missing id"))
             continue
         try:
-            res = p.update(project.id, project.name, project.path, project.tags)
+            res = p.update(project.id, project.name, project.path, project.tags, project.notes_file)
             updated_projects.append(res)
         except Exception as ex:
             failed.append((i, f"{ex.__class__.__name__}: {str(ex)}"))
@@ -125,39 +127,39 @@ async def update_projects(projects: List[ProjectData]):
 
 
 @app.delete("/projects")
-async def delete_projects(project_ids: List[int]):
+async def delete_projects(project_ids: List[Tuple[int, bool]]):
     old_state = p.__state__
-    
+
     affected_ids = []
+    deleted_notes = []
     failed = []
-    for id in project_ids:
+    for id, delete_notes in project_ids:
         try:
-            affected_id = p.delete(id)
+            affected_id, deleted = p.delete(id, delete_notes)
+            if deleted:
+                deleted_notes.append(id)
             affected_ids.append(affected_id)
         except Exception as ex:
             failed.append((id, f"{ex.__class__.__name__}: {str(ex)}"))
 
     ok = p.commit(old_state)
     if ok:
-        return JSONResponse({"success": affected_ids, "fail": failed})
+        return JSONResponse({"success": affected_ids, "deleted_notes": deleted_notes, "fail": failed})
     else:
         return Response("Error while committing changes", status_code=500)
-
 
 
 # Function to run the Uvicorn server
 def run_server():
     ws.run()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("Ready to start API")
     server_thread = Thread(target=run_server)
     server_thread.daemon = True
     server_thread.start()
 
     print("Ready to start WebView")
-    webview.create_window(
-        'Code Project Manager',
-        'http://127.0.0.1:8080/app'
-    )
+    webview.create_window("Code Project Manager", "http://127.0.0.1:8080/app")
     webview.start()
