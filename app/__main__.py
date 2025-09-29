@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 from typing import List
 
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Path
+from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from code_project_manager import CodeProjectManager, ProjectData
@@ -43,6 +44,18 @@ ws = uvicorn.Server(
     )
 )
 
+# ui
+ 
+@app.get("/")
+def index():
+    return FileResponse("webui/dist/index.html")
+ 
+@app.exception_handler(404)
+async def exception_404_handler(request, exc):
+    return FileResponse("webui/dist/index.html")
+ 
+app.mount("/app", StaticFiles(directory="webui/dist/"), name="webui")
+
 
 # projects
 p = CodeProjectManager()
@@ -53,8 +66,15 @@ async def get_projects():
     return p.read()
 
 
+@app.get("/projects/{id}")
+async def run_project(id: int = Path()):
+    p.run_id()
+    return Response()
+
+
 @app.post("/projects")
 async def add_projects(projects: List[ProjectData]):
+    old_state = p.__state__
 
     affected_ids = []
     failed = []
@@ -73,11 +93,15 @@ async def add_projects(projects: List[ProjectData]):
         except Exception as ex:
             failed.append((i, f"{ex.__class__.__name__}: {str(ex)}"))
 
-    return JSONResponse({"success": affected_ids, "fail": failed})
-
+    ok = p.commit(old_state)
+    if ok:
+        return JSONResponse({"success": affected_ids, "fail": failed})
+    else:
+        return Response("Error while committing changes", status_code=500)
 
 @app.patch("/projects")
 async def update_projects(projects: List[ProjectData]):
+    old_state = p.__state__
 
     updated_projects = []
     failed = []
@@ -90,11 +114,18 @@ async def update_projects(projects: List[ProjectData]):
             updated_projects.append(res)
         except Exception as ex:
             failed.append((i, f"{ex.__class__.__name__}: {str(ex)}"))
-    return JSONResponse({"success": updated_projects, "fail": failed})
+
+    ok = p.commit(old_state)
+    if ok:
+        return JSONResponse({"success": updated_projects, "fail": failed})
+    else:
+        return Response("Error while committing changes", status_code=500)
 
 
 @app.delete("/projects")
 async def delete_projects(project_ids: List[int]):
+    old_state = p.__state__
+    
     affected_ids = []
     failed = []
     for id in project_ids:
@@ -103,7 +134,12 @@ async def delete_projects(project_ids: List[int]):
             affected_ids.append(affected_id)
         except Exception as ex:
             failed.append((id, f"{ex.__class__.__name__}: {str(ex)}"))
-    return JSONResponse({"success": affected_ids, "fail": failed})
+
+    ok = p.commit(old_state)
+    if ok:
+        return JSONResponse({"success": affected_ids, "fail": failed})
+    else:
+        return Response("Error while committing changes", status_code=500)
 
 
 if __name__ == "__main__":
