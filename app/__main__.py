@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
 from typing import List
+from threading import Thread
 
 from fastapi import FastAPI, Path
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+import webview
 
 from code_project_manager import CodeProjectManager, ProjectData
 
@@ -68,7 +70,7 @@ async def get_projects():
 
 @app.get("/projects/{id}")
 async def run_project(id: int = Path()):
-    p.run_id()
+    p.run_id(id)
     return Response()
 
 
@@ -142,6 +144,20 @@ async def delete_projects(project_ids: List[int]):
         return Response("Error while committing changes", status_code=500)
 
 
-if __name__ == "__main__":
-    print("Ready to start")
+
+# Function to run the Uvicorn server
+def run_server():
     ws.run()
+
+if __name__ == '__main__':
+    print("Ready to start API")
+    server_thread = Thread(target=run_server)
+    server_thread.daemon = True
+    server_thread.start()
+
+    print("Ready to start WebView")
+    webview.create_window(
+        'Code Project Manager',
+        'http://127.0.0.1:8080/app'
+    )
+    webview.start()
