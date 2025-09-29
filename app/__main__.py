@@ -1,64 +1,111 @@
-from json import load, dump
-from fire import Fire
+from contextlib import asynccontextmanager
+from typing import List
 
-import subprocess
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+import uvicorn
+
+from code_project_manager import CodeProjectManager, ProjectData
 
 
-class CodeProjectManager:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
 
-    def __init__(self, projects_json_db="projects.json"):
-        self.project_json_db = projects_json_db
-        self.projects = self.read_db(self.project_json_db)
 
-    @staticmethod
-    def read_db(project_json_db):
-        return load(open(project_json_db, "r"))
+# Define app
+app = FastAPI(
+    title="",
+    version=1.1,
+    description="",
+    redoc_url=None,
+    openapi_url=None,
+    lifespan=lifespan,
+)
 
-    @staticmethod
-    def save_db(obj, project_json_db):
-        dump(obj, open(project_json_db, "w"))
 
-    def get_latest_id(self):
-        return max([x["id"] for x in self.projects])
+# Health
+@app.get("/health")
+async def health():
+    return {"message": app.title + " " + str(app.version) + " Alive"}
 
-    def read(self):
-        return self.projects
 
-    def add(self, name, path, tags):
-        id = self.get_latest_id() + 1
-        p = {"id": id, "name": name, "path": path, "tags": tags}
-        self.projects.append(p)
-        self.save_db(self.projects, self.project_json_db)
-        return p
+ws = uvicorn.Server(
+    config=uvicorn.Config(
+        app=app,
+        port=8080,
+        host="0.0.0.0",
+        log_level="info",
+        log_config={
+            "version": 1,
+            "disable_existing_loggers": False,
+        },
+    )
+)
 
-    def update(self, id, name, path, tags):
-        res = [x for x in self.projects if x["id"] == id]
-        if len(res) == 0:
-            raise ValueError(f"Project with ID {id} not found.")
-        else:
-            self.projects.remove(res[0])
-            p = res[0]
-            p["name"] = name
-            p["path"] = path
-            p["tags"] = tags
-            self.projects.append(p)
-        return p
 
-    def delete(self):
-        res = [x for x in self.projects if x["id"] == id]
-        if len(res) == 0:
-            raise ValueError(f"Project with ID {id} not found.")
-        else:
-            self.projects.remove(res[0])
+# projects
+p = CodeProjectManager()
 
-    def run_id(self, id):
-        res = [x for x in self.projects if x["id"] == id]
-        if len(res) == 0:
-            raise ValueError(f"Project with ID {id} not found.")
-        else:
-            path = res[0]["path"]
-            subprocess.run(["code", path])
+
+@app.get("/projects")
+async def get_projects():
+    return p.read()
+
+
+@app.post("/projects")
+async def add_projects(projects: List[ProjectData]):
+
+    affected_ids = []
+    failed = []
+    for i, project in enumerate(projects):
+
+        if project.name == None:
+            failed.append((i, "missing name"))
+            continue
+
+        if project.path == None:
+            failed.append((i, "missing path"))
+            continue
+        try:
+            res = p.add(project.name, project.path, " ".join(project.tags))
+            affected_ids.append(res["id"])
+        except Exception as ex:
+            failed.append((i, f"{ex.__class__.__name__}: {str(ex)}"))
+
+    return JSONResponse({"success": affected_ids, "fail": failed})
+
+
+@app.patch("/projects")
+async def update_projects(projects: List[ProjectData]):
+
+    updated_projects = []
+    failed = []
+    for i, project in enumerate(projects):
+        if project.id == None:
+            failed.append((project.id, "missing id"))
+            continue
+        try:
+            res = p.update(project.id, project.name, project.path, project.tags)
+            updated_projects.append(res)
+        except Exception as ex:
+            failed.append((i, f"{ex.__class__.__name__}: {str(ex)}"))
+    return JSONResponse({"success": updated_projects, "fail": failed})
+
+
+@app.delete("/projects")
+async def delete_projects(project_ids: List[int]):
+    affected_ids = []
+    failed = []
+    for id in project_ids:
+        try:
+            affected_id = p.delete(id)
+            affected_ids.append(affected_id)
+        except Exception as ex:
+            failed.append((id, f"{ex.__class__.__name__}: {str(ex)}"))
+    return JSONResponse({"success": affected_ids, "fail": failed})
 
 
 if __name__ == "__main__":
-    Fire(CodeProjectManager)
+    print("Ready to start")
+    ws.run()
