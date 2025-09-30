@@ -21898,12 +21898,30 @@
   } = axios_default;
 
   // src/index.tsx
+  var tagColors = [
+    "rgb(255, 228, 225)",
+    "rgb(255, 224, 178)",
+    "rgb(255, 248, 225)",
+    "rgb(204, 255, 204)",
+    "rgb(222, 238, 222)",
+    "rgb(227, 242, 253)",
+    "rgb(179, 229, 252)",
+    "rgb(232, 234, 246)",
+    "rgb(225, 213, 231)",
+    "rgb(255, 229, 217)",
+    "rgb(245, 245, 220)",
+    "rgb(220, 220, 220)"
+  ];
   var App = () => {
     const [projects, setProjects] = (0, import_react.useState)([]);
+    const [categories, setCategories] = (0, import_react.useState)([]);
     const getProjects = async () => {
       try {
         const response = await axios_default.get("/projects");
         setProjects(response.data);
+        let cat = response.data.map((x) => x["tags"]).flat().filter((v, i, a) => a.indexOf(v) == i);
+        console.log("fetched categories", cat);
+        setCategories(cat.map((v, i) => [v, tagColors[i]]));
       } catch (error) {
         console.error("Error fetching data:", error);
       }
@@ -21914,6 +21932,9 @@
     (0, import_react.useEffect)(() => {
       console.log("set projects", projects);
     }, [projects]);
+    (0, import_react.useEffect)(() => {
+      console.log("set categories", categories);
+    }, [categories]);
     const runProject = async (id) => {
       try {
         const response = await axios_default.get("/projects/" + id);
@@ -21922,7 +21943,7 @@
         console.error("Error fetching data:", error);
       }
     };
-    return /* @__PURE__ */ import_react.default.createElement("div", null, projects.map((p, i) => /* @__PURE__ */ import_react.default.createElement("div", { key: p["name"] + i }, /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => runProject(p["id"]) }, p["name"]), " (", p["tags"], ")")));
+    return /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("div", { className: "projects-container" }, projects.map((p, i) => /* @__PURE__ */ import_react.default.createElement("div", { className: "projects-item", key: p["name"] + i }, /* @__PURE__ */ import_react.default.createElement("div", { className: "projects-item-content" }, /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => runProject(p["id"]) }, p["name"])), /* @__PURE__ */ import_react.default.createElement("div", { className: "projects-tags" }, p["tags"].map((t, j) => /* @__PURE__ */ import_react.default.createElement("span", { key: t + j, style: { background: categories.find((v) => v[0] == t)?.[1] || "white" } }, t)))), /* @__PURE__ */ import_react.default.createElement("div", null)))));
   };
   var container = document.getElementById("root");
   var root = (0, import_client.createRoot)(container);
